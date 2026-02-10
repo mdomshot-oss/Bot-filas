@@ -1,12 +1,12 @@
 {
-  "nomeFila": "TOKY APOSTAS",
-  "valores": [1,2,3,5,10,20,100],
-  "modos": {
-    "1v1": 2,
-    "2v2": 4,
-    "3v3": 6,
-    "4v4": 8
+  "name": "bot-filas",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
   },
-  "pagamento": "PIX: sua-chave-aqui",
-  "filaAtiva": true
+  "dependencies": {
+    "discord.js": "^14.14.1"
+  }
 }
