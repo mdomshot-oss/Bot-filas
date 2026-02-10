@@ -1,12 +1,10 @@
-const fs = require("fs");
 const {
   Client,
   GatewayIntentBits,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ChannelType,
-  PermissionsBitField
+  Events
 } = require("discord.js");
 
 const client = new Client({
@@ -17,176 +15,94 @@ const client = new Client({
   ]
 });
 
-// ===== CONFIG =====
-const CONFIG_FILE = "./config.json";
+const filas = {};
 
-if (!fs.existsSync(CONFIG_FILE)) {
-  fs.writeFileSync(
-    CONFIG_FILE,
-    JSON.stringify({
-      nomeFila: "TOKY APOSTAS",
-      valores: [1, 2, 3, 5, 10, 20, 100],
-      modos: {
-        "1v1": 2,
-        "2v2": 4,
-        "3v3": 6,
-        "4v4": 8
-      },
-      pagamento: "PIX: sua-chave-aqui",
-      filaAtiva: true
-    }, null, 2)
-  );
-}
-
-let config = JSON.parse(fs.readFileSync(CONFIG_FILE));
-let fila = {};
-
-function salvarConfig() {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-}
-
-// ===== BOT =====
-client.on("ready", () => {
-  console.log(`✅ Bot online como ${client.user.tag}`);
+client.once("ready", () => {
+  console.log(`🤖 Bot ligado como ${client.user.tag}`);
 });
 
-// ===== COMANDO PARA ABRIR PAINEL =====
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
-  if (message.content === "!painel") {
-    if (!config.filaAtiva) {
-      return message.reply("⛔ A fila está fechada.");
-    }
+  if (message.content === "!teste") {
+    return message.reply("Estou vivo ✅");
+  }
 
-    const rowModos = new ActionRowBuilder().addComponents(
-      ...Object.keys(config.modos).map(modo =>
-        new ButtonBuilder()
-          .setCustomId(`modo_${modo}`)
-          .setLabel(modo)
-          .setStyle(ButtonStyle.Primary)
-      )
+  if (message.content === "!fila") {
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("entrar")
+        .setLabel("Entrar na fila")
+        .setStyle(ButtonStyle.Success),
+
+      new ButtonBuilder()
+        .setCustomId("sair")
+        .setLabel("Sair da fila")
+        .setStyle(ButtonStyle.Danger)
     );
 
     await message.reply({
-      content: `🏷️ **${config.nomeFila}**\n\n🎮 Escolha o modo:`,
-      components: [rowModos]
+      content: "🎮 **FILA DE APOSTAS**\nEscolha abaixo:",
+      components: [row]
     });
-  }
-
-  // ===== ADMIN =====
-  if (message.content.startsWith("!set")) {
-    if (!message.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-      return message.reply("❌ Apenas admins.");
-    }
-
-    const args = message.content.split(" ").slice(1);
-    const tipo = args.shift();
-
-    if (tipo === "nome") {
-      config.nomeFila = args.join(" ");
-      salvarConfig();
-      return message.reply("✅ Nome da fila atualizado.");
-    }
-
-    if (tipo === "pagamento") {
-      config.pagamento = args.join(" ");
-      salvarConfig();
-      return message.reply("✅ Pagamento atualizado.");
-    }
-
-    if (tipo === "on") {
-      config.filaAtiva = true;
-      salvarConfig();
-      return message.reply("🟢 Fila aberta.");
-    }
-
-    if (tipo === "off") {
-      config.filaAtiva = false;
-      salvarConfig();
-      return message.reply("🔴 Fila fechada.");
-    }
   }
 });
 
-// ===== BOTÕES =====
-client.on("interactionCreate", async (interaction) => {
+client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isButton()) return;
 
   const userId = interaction.user.id;
 
-  // ===== ESCOLHA DO MODO =====
-  if (interaction.customId.startsWith("modo_")) {
-    const modo = interaction.customId.replace("modo_", "");
+  if (!filas[userId]) {
+    filas[userId] = { valor: null, modo: null };
+  }
 
-    fila[userId] = { modo, valor: null };
-
-    const rowValores = new ActionRowBuilder().addComponents(
-      ...config.valores.map(valor =>
-        new ButtonBuilder()
-          .setCustomId(`valor_${valor}`)
-          .setLabel(`R$ ${valor}`)
-          .setStyle(ButtonStyle.Success)
-      )
+  if (interaction.customId === "entrar") {
+    const rowModo = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("1v1").setLabel("1v1").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("2v2").setLabel("2v2").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("3v3").setLabel("3v3").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("4v4").setLabel("4v4").setStyle(ButtonStyle.Primary)
     );
 
     return interaction.reply({
-      content: `🎮 Modo escolhido: **${modo}**\n💰 Agora escolha o valor:`,
-      components: [rowValores],
+      content: "Escolha o **modo de jogo**:",
+      components: [rowModo],
       ephemeral: true
     });
   }
 
-  // ===== ESCOLHA DO VALOR =====
-  if (interaction.customId.startsWith("valor_")) {
-    const valor = Number(interaction.customId.replace("valor_", ""));
-    const dados = fila[userId];
+  if (["1v1", "2v2", "3v3", "4v4"].includes(interaction.customId)) {
+    filas[userId].modo = interaction.customId;
 
-    if (!dados) {
-      return interaction.reply({ content: "❌ Selecione o modo primeiro.", ephemeral: true });
-    }
+    const rowValor = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId("v1").setLabel("1").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("v2").setLabel("2").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("v5").setLabel("5").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("v10").setLabel("10").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("v20").setLabel("20").setStyle(ButtonStyle.Secondary)
+    );
 
-    dados.valor = valor;
+    return interaction.update({
+      content: `Modo escolhido: **${interaction.customId}**\nAgora escolha o **valor**:`,
+      components: [rowValor]
+    });
+  }
 
-    const lista = Object.entries(fila)
-      .filter(([_, d]) => d.modo === dados.modo && d.valor === valor)
-      .map(([id]) => id);
+  if (interaction.customId.startsWith("v")) {
+    const valor = interaction.customId.replace("v", "");
+    filas[userId].valor = valor;
 
-    lista.push(userId);
+    return interaction.update({
+      content: `✅ Você entrou na fila!\n🎮 Modo: **${filas[userId].modo}**\n💰 Valor: **${valor}**`,
+      components: []
+    });
+  }
 
-    const limite = config.modos[dados.modo];
-
-    if (lista.length >= limite) {
-      const guild = interaction.guild;
-
-      const canal = await guild.channels.create({
-        name: `jogo-${dados.modo}-${valor}`,
-        type: ChannelType.GuildText,
-        permissionOverwrites: [
-          { id: guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-          ...lista.map(id => ({
-            id,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.SendMessages
-            ]
-          }))
-        ]
-      });
-
-      await canal.send(
-        `🏷️ **${config.nomeFila}**\n\n` +
-        `🎮 Modo: **${dados.modo}**\n` +
-        `💰 Valor: **R$ ${valor}**\n\n` +
-        `👥 Jogadores:\n${lista.map(id => `<@${id}>`).join("\n")}\n\n` +
-        `💳 ${config.pagamento}\n📝 Conversem aqui as regras.`
-      );
-
-      lista.forEach(id => delete fila[id]);
-    }
-
+  if (interaction.customId === "sair") {
+    delete filas[userId];
     return interaction.reply({
-      content: `✅ Entrou na fila!\n🎮 ${dados.modo} | 💰 R$${valor}`,
+      content: "❌ Você saiu da fila",
       ephemeral: true
     });
   }
