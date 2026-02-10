@@ -73,4 +73,4 @@ client.on("interactionCreate", async (interaction) => {
   }
 });
 
-client.login("SEU_TOKEN_AQUI");
+client.login("seu token aqui");
