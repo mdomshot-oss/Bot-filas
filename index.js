@@ -1,10 +1,12 @@
 const {
   Client,
   GatewayIntentBits,
+  EmbedBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  Events
+  ChannelType,
+  PermissionsBitField
 } = require("discord.js");
 
 const client = new Client({
@@ -15,96 +17,170 @@ const client = new Client({
   ]
 });
 
-const filas = {};
+// CONFIG
+const ORG_NAME = "ORG TK";
+const VALORES = [1, 2, 3, 5, 10, 20, 100];
+const MODOS = {
+  "1v1": 2,
+  "2v2": 4,
+  "3v3": 6,
+  "4v4": 8
+};
 
+// ESTADO
+let fila = [];
+let modoAtual = null;
+let valorAtual = null;
+let filaMessage = null;
+
+// READY
 client.once("ready", () => {
   console.log(`🤖 Bot ligado como ${client.user.tag}`);
 });
 
+// GERAR EMBED
+function gerarEmbedFila() {
+  return new EmbedBuilder()
+    .setColor(0x000000)
+    .setTitle(`🏆 ${ORG_NAME} 0% TAXA 🏆`)
+    .setDescription(
+      `🎮 **Modo:** ${modoAtual ?? "Não escolhido"}\n` +
+      `💰 **Valor:** ${valorAtual ? "R$ " + valorAtual : "Não escolhido"}\n\n` +
+      `👥 **Jogadores na fila (${fila.length}/${modoAtual ? MODOS[modoAtual] : "?"}):**\n` +
+      (fila.length > 0
+        ? fila.map(id => `• <@${id}>`).join("\n")
+        : "Nenhum jogador ainda")
+    )
+    .setFooter({ text: "ORG TK • Sistema de Fila" });
+}
+
+// COMANDO !fila
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
-  if (message.content === "!teste") {
-    return message.reply("Estou vivo ✅");
-  }
-
   if (message.content === "!fila") {
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("entrar")
-        .setLabel("Entrar na fila")
-        .setStyle(ButtonStyle.Success),
+    fila = [];
+    modoAtual = null;
+    valorAtual = null;
 
-      new ButtonBuilder()
-        .setCustomId("sair")
-        .setLabel("Sair da fila")
-        .setStyle(ButtonStyle.Danger)
+    const rowModo = new ActionRowBuilder().addComponents(
+      Object.keys(MODOS).map(m =>
+        new ButtonBuilder()
+          .setCustomId(`modo_${m}`)
+          .setLabel(m)
+          .setStyle(ButtonStyle.Primary)
+      )
     );
 
-    await message.reply({
-      content: "🎮 **FILA DE APOSTAS**\nEscolha abaixo:",
-      components: [row]
+    const sent = await message.channel.send({
+      embeds: [gerarEmbedFila()],
+      components: [rowModo]
     });
+
+    filaMessage = sent;
   }
 });
 
-client.on(Events.InteractionCreate, async (interaction) => {
+// INTERAÇÕES
+client.on("interactionCreate", async (interaction) => {
   if (!interaction.isButton()) return;
 
-  const userId = interaction.user.id;
+  const guild = interaction.guild;
+  const user = interaction.user;
 
-  if (!filas[userId]) {
-    filas[userId] = { valor: null, modo: null };
-  }
-
-  if (interaction.customId === "entrar") {
-    const rowModo = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("1v1").setLabel("1v1").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("2v2").setLabel("2v2").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("3v3").setLabel("3v3").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("4v4").setLabel("4v4").setStyle(ButtonStyle.Primary)
-    );
-
-    return interaction.reply({
-      content: "Escolha o **modo de jogo**:",
-      components: [rowModo],
-      ephemeral: true
-    });
-  }
-
-  if (["1v1", "2v2", "3v3", "4v4"].includes(interaction.customId)) {
-    filas[userId].modo = interaction.customId;
+  // ESCOLHER MODO
+  if (interaction.customId.startsWith("modo_")) {
+    modoAtual = interaction.customId.replace("modo_", "");
 
     const rowValor = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("v1").setLabel("1").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("v2").setLabel("2").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("v5").setLabel("5").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("v10").setLabel("10").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("v20").setLabel("20").setStyle(ButtonStyle.Secondary)
+      VALORES.map(v =>
+        new ButtonBuilder()
+          .setCustomId(`valor_${v}`)
+          .setLabel(`R$ ${v}`)
+          .setStyle(ButtonStyle.Secondary)
+      )
     );
 
-    return interaction.update({
-      content: `Modo escolhido: **${interaction.customId}**\nAgora escolha o **valor**:`,
+    await interaction.update({
+      embeds: [gerarEmbedFila()],
       components: [rowValor]
     });
   }
 
-  if (interaction.customId.startsWith("v")) {
-    const valor = interaction.customId.replace("v", "");
-    filas[userId].valor = valor;
+  // ESCOLHER VALOR
+  if (interaction.customId.startsWith("valor_")) {
+    valorAtual = interaction.customId.replace("valor_", "");
 
-    return interaction.update({
-      content: `✅ Você entrou na fila!\n🎮 Modo: **${filas[userId].modo}**\n💰 Valor: **${valor}**`,
-      components: []
+    const rowFila = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("entrar")
+        .setLabel("🟢 Entrar na fila")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId("sair")
+        .setLabel("🔴 Sair da fila")
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    await interaction.update({
+      embeds: [gerarEmbedFila()],
+      components: [rowFila]
     });
   }
 
+  // ENTRAR NA FILA
+  if (interaction.customId === "entrar") {
+    if (fila.includes(user.id)) {
+      return interaction.reply({ content: "Você já está na fila.", ephemeral: true });
+    }
+
+    fila.push(user.id);
+    await interaction.reply({ content: "✅ Você entrou na fila!", ephemeral: true });
+
+    if (filaMessage) filaMessage.edit({ embeds: [gerarEmbedFila()] });
+
+    // FILA CHEIA → CRIAR CANAL
+    if (modoAtual && fila.length === MODOS[modoAtual]) {
+      const channel = await guild.channels.create({
+        name: `🎮-${modoAtual}-r${valorAtual}`,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+          {
+            id: guild.roles.everyone,
+            deny: [PermissionsBitField.Flags.ViewChannel]
+          },
+          ...fila.map(id => ({
+            id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory
+            ]
+          }))
+        ]
+      });
+
+      await channel.send(
+        `🏆 **${ORG_NAME}**\n` +
+        `🎮 Modo: **${modoAtual}**\n` +
+        `💰 Valor: **R$ ${valorAtual}**\n\n` +
+        `👥 Jogadores:\n${fila.map(id => `<@${id}>`).join("\n")}`
+      );
+
+      fila = [];
+      modoAtual = null;
+      valorAtual = null;
+
+      if (filaMessage) filaMessage.edit({ embeds: [gerarEmbedFila()] });
+    }
+  }
+
+  // SAIR DA FILA
   if (interaction.customId === "sair") {
-    delete filas[userId];
-    return interaction.reply({
-      content: "❌ Você saiu da fila",
-      ephemeral: true
-    });
+    fila = fila.filter(id => id !== user.id);
+    await interaction.reply({ content: "❌ Você saiu da fila.", ephemeral: true });
+
+    if (filaMessage) filaMessage.edit({ embeds: [gerarEmbedFila()] });
   }
 });
 
