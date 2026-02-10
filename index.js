@@ -1,14 +1,10 @@
 const {
   Client,
   GatewayIntentBits,
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder
+  ChannelType,
+  PermissionsBitField
 } = require("discord.js");
 
-// ===== CONFIG =====
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -17,135 +13,95 @@ const client = new Client({
   ]
 });
 
-// ===== DADOS =====
+// valores permitidos
+const valoresPermitidos = [1, 2, 3, 5, 10, 20, 100];
+
+// fila simples
 let fila = [];
-let temp = {}; // dados temporários por usuário
-let mensagemFilaId = null;
 
-// ===== FUNÇÃO EMBED =====
-function criarEmbed() {
-  return new EmbedBuilder()
-    .setColor("#FFD100")
-    .setTitle("🏆 3x3 | ORG")
-    .setDescription(
-      "🎮 **Formato:** Personalizado\n" +
-      "💰 **Valor:** Pontos/Fichas\n\n" +
-      "👥 **Jogadores:**\n" +
-      (fila.length
-        ? fila.map((u, i) => `${i + 1}. ${u.nome} | ${u.modo} | ${u.valor}`).join("\n")
-        : "_Nenhum jogador na fila._")
-    )
-    .setFooter({ text: "Sistema de Fila" });
-}
-
-// ===== BOT ONLINE =====
-client.once("ready", () => {
-  console.log(`🤖 Online como ${client.user.tag}`);
+client.on("ready", () => {
+  console.log(`✅ Bot online como ${client.user.tag}`);
 });
 
-// ===== COMANDO PARA CRIAR A FILA =====
 client.on("messageCreate", async (message) => {
   if (message.author.bot) return;
 
-  if (message.content === "!fila") {
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("entrar")
-        .setLabel("✅ Entrar na Fila")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId("sair")
-        .setLabel("❌ Sair da Fila")
-        .setStyle(ButtonStyle.Danger)
-    );
+  const args = message.content.split(" ");
+  const comando = args[0];
 
-    const msg = await message.channel.send({
-      embeds: [criarEmbed()],
-      components: [row]
+  // entrar na fila
+  if (comando === "!fila") {
+    const valor = parseInt(args[1]);
+
+    if (!valoresPermitidos.includes(valor)) {
+      return message.reply(
+        `❌ Valor inválido. Use: ${valoresPermitidos.join(", ")}`
+      );
+    }
+
+    if (fila.find(u => u.id === message.author.id)) {
+      return message.reply("⚠️ Você já está na fila.");
+    }
+
+    if (fila.length >= 2) {
+      return message.reply("⛔ A fila já está cheia.");
+    }
+
+    fila.push({
+      id: message.author.id,
+      user: message.author,
+      valor
     });
 
-    mensagemFilaId = msg.id;
+    message.reply(`✅ Entrou na fila com valor **R$ ${valor}**`);
+
+    // quando completar 2 jogadores
+    if (fila.length === 2) {
+      const guild = message.guild;
+
+      const canal = await guild.channels.create({
+        name: `jogo-${fila[0].user.username}-${fila[1].user.username}`,
+        type: ChannelType.GuildText,
+        permissionOverwrites: [
+          {
+            id: guild.id,
+            deny: [PermissionsBitField.Flags.ViewChannel]
+          },
+          {
+            id: fila[0].id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages
+            ]
+          },
+          {
+            id: fila[1].id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages
+            ]
+          }
+        ]
+      });
+
+      canal.send(
+        `🎮 **Fila completa!**  
+👥 Jogadores: <@${fila[0].id}> x <@${fila[1].id}>  
+💰 Valor: **R$ ${fila[0].valor}**  
+
+📝 Conversem aqui sobre as **regras do jogo** antes de começar.`
+      );
+
+      // limpa a fila
+      fila = [];
+    }
+  }
+
+  // sair da fila
+  if (comando === "!sair") {
+    fila = fila.filter(u => u.id !== message.author.id);
+    message.reply("🚪 Você saiu da fila.");
   }
 });
 
-// ===== INTERAÇÕES =====
-client.on("interactionCreate", async (interaction) => {
-  // BOTÕES
-  if (interaction.isButton()) {
-    const userId = interaction.user.id;
-
-    if (interaction.customId === "entrar") {
-      temp[userId] = { id: userId, nome: interaction.user.username };
-
-      const modoMenu = new StringSelectMenuBuilder()
-        .setCustomId("modo")
-        .setPlaceholder("🎮 Escolha o modo")
-        .addOptions(
-          { label: "Normal", value: "Normal" },
-          { label: "Full", value: "Full" }
-        );
-
-      return interaction.reply({
-        content: "Escolha o **modo**:",
-        components: [new ActionRowBuilder().addComponents(modoMenu)],
-        ephemeral: true
-      });
-    }
-
-    if (interaction.customId === "sair") {
-      fila = fila.filter(u => u.id !== userId);
-      await interaction.reply({ content: "❌ Você saiu da fila.", ephemeral: true });
-      return atualizarMensagem(interaction);
-    }
-  }
-
-  // SELECT MENUS
-  if (interaction.isStringSelectMenu()) {
-    const userId = interaction.user.id;
-
-    if (interaction.customId === "modo") {
-      temp[userId].modo = interaction.values[0];
-
-      const valorMenu = new StringSelectMenuBuilder()
-        .setCustomId("valor")
-        .setPlaceholder("💰 Escolha o valor")
-        .addOptions(
-          { label: "10", value: "10" },
-          { label: "20", value: "20" },
-          { label: "Livre", value: "Livre" }
-        );
-
-      return interaction.update({
-        content: "Escolha o **valor**:",
-        components: [new ActionRowBuilder().addComponents(valorMenu)]
-      });
-    }
-
-    if (interaction.customId === "valor") {
-      temp[userId].valor = interaction.values[0];
-      fila.push(temp[userId]);
-      delete temp[userId];
-
-      await interaction.update({
-        content: "✅ Entrou na fila!",
-        components: []
-      });
-
-      return atualizarMensagem(interaction);
-    }
-  }
-});
-
-// ===== ATUALIZAR A MENSAGEM DA FILA =====
-async function atualizarMensagem(interaction) {
-  try {
-    const channel = interaction.channel;
-    const msg = await channel.messages.fetch(mensagemFilaId);
-    await msg.edit({ embeds: [criarEmbed()] });
-  } catch (e) {
-    console.log("Não foi possível atualizar a mensagem.");
-  }
-}
-
-// ===== LOGIN =====
 client.login(process.env.TOKEN);
